@@ -55,6 +55,49 @@ const FIELD_LABELS = {
   organization_name: 'Organization Name', description: 'Description',
 };
 
+const FIELD_PLACEHOLDERS = {
+  // Common
+  year: 'e.g. 2023-24',
+  document_url: 'Upload or paste document link',
+  description: 'Brief description of the activity...',
+
+  // Field Project
+  project_name: 'e.g. Smart Irrigation System',
+  activity: 'e.g. Development / Research / Survey',
+
+  // Internship
+  duration: 'e.g. 6 weeks / 2 months',
+  agency_name: 'e.g. Infosys, TCS, Local NGO',
+
+  // Club Activity
+  club_name: 'e.g. Robotics Club, NSS, Rotaract',
+  activity_name: 'e.g. Workshop Organizer, Event Coordinator',
+
+  // Sports
+  sport_name: 'e.g. Cricket, Badminton, Athletics',
+  venue: 'e.g. District Sports Complex, Pune',
+  achievement: 'e.g. 1st Place, Participation, Runner-up',
+
+  // Higher Education
+  year_of_passing: 'e.g. 2024',
+  program_graduated: 'e.g. B.E. Computer Engineering',
+  institution_joined: 'e.g. IIT Bombay, COEP',
+  program_admitted: 'e.g. M.Tech Data Science',
+
+  // Examination
+  registration_number: 'e.g. GATE2024-CS-00123',
+  exam_name: 'e.g. GATE, GRE, UPSC, CAT',
+  score: 'e.g. 720 / 99.5 percentile / AIR 45',
+  admit_card_url: 'Upload or paste admit card link',
+  result_document_url: 'Upload or paste result document link',
+
+  // Hackathon
+  organization_name: 'e.g. Smart India Hackathon, HackMIT',
+  project_name: 'e.g. AI-based Crop Disease Detector',
+
+  // Extra-Curricular
+};
+
 const StudentDashboard = () => {
   const { user, logout } = useAuth();
   const [data, setData] = useState(null);
@@ -326,7 +369,7 @@ const StudentDashboard = () => {
                 </select>
               </div>
               <div className="bg-indigo-50 p-4 rounded-lg text-sm text-indigo-700 mb-4 border border-indigo-100">
-                Student Name and PRN will be automatically linked to this submission.
+                Student Name and PRN will be automatically linked to this submission. Fill all fields in the format shown in the placeholders.
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {SUBMISSION_TYPES[submitType].fields.map((field) => {
@@ -336,7 +379,7 @@ const StudentDashboard = () => {
                       {field === 'description' ? (
                         <>
                           <label className="block text-sm font-medium text-gray-700 mb-1">{FIELD_LABELS[field] || field.replace(/_/g, ' ')}</label>
-                          <textarea required value={submitForm[field] || ''} onChange={(e) => setSubmitForm({...submitForm, [field]: e.target.value})} className="w-full border rounded-lg p-2" rows="3"></textarea>
+                          <textarea required value={submitForm[field] || ''} onChange={(e) => setSubmitForm({...submitForm, [field]: e.target.value})} className="w-full border rounded-lg p-2" rows="3" placeholder={FIELD_PLACEHOLDERS[field] || ''}></textarea>
                         </>
                       ) : isFileField ? (
                         <FileUpload
@@ -347,7 +390,7 @@ const StudentDashboard = () => {
                       ) : (
                         <>
                           <label className="block text-sm font-medium text-gray-700 mb-1">{FIELD_LABELS[field] || field.replace(/_/g, ' ')}</label>
-                          <input type="text" required value={submitForm[field] || ''} onChange={(e) => setSubmitForm({...submitForm, [field]: e.target.value})} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500" />
+                          <input type="text" required value={submitForm[field] || ''} onChange={(e) => setSubmitForm({...submitForm, [field]: e.target.value})} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500" placeholder={FIELD_PLACEHOLDERS[field] || ''} />
                         </>
                       )}
                     </div>
@@ -429,7 +472,7 @@ const StudentDashboard = () => {
                       {field === 'description' ? (
                         <>
                           <label className="block text-sm font-medium text-gray-700 mb-1">{FIELD_LABELS[field] || field.replace(/_/g, ' ')}</label>
-                          <textarea value={editForm[field] || ''} onChange={(e) => setEditForm({...editForm, [field]: e.target.value})} className="w-full border rounded-lg p-2" rows="3" placeholder="Leave blank to keep existing value"></textarea>
+                          <textarea value={editForm[field] || ''} onChange={(e) => setEditForm({...editForm, [field]: e.target.value})} className="w-full border rounded-lg p-2" rows="3" placeholder={FIELD_PLACEHOLDERS[field] || 'Leave blank to keep existing value'}></textarea>
                         </>
                       ) : isFileField ? (
                         <FileUpload
@@ -440,7 +483,7 @@ const StudentDashboard = () => {
                       ) : (
                         <>
                           <label className="block text-sm font-medium text-gray-700 mb-1">{FIELD_LABELS[field] || field.replace(/_/g, ' ')}</label>
-                          <input type="text" value={editForm[field] || ''} onChange={(e) => setEditForm({...editForm, [field]: e.target.value})} placeholder="Leave blank to keep existing value" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500" />
+                          <input type="text" value={editForm[field] || ''} onChange={(e) => setEditForm({...editForm, [field]: e.target.value})} placeholder={FIELD_PLACEHOLDERS[field] ? `${FIELD_PLACEHOLDERS[field]} (leave blank to keep existing)` : 'Leave blank to keep existing value'} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-500" />
                         </>
                       )}
                     </div>

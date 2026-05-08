@@ -162,7 +162,7 @@ const Login = () => {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                     <input type={showPassword ? 'text' : 'password'} value={signUp.password} onChange={e => setSignUp({ ...signUp, password: e.target.value })}
                       className="w-full bg-gray-800/50 border border-gray-600 outline-none focus:border-indigo-500 text-white rounded-lg py-2.5 pl-8 pr-3 text-sm transition-all"
-                      placeholder="Min 8 chars" required minLength={8} />
+                      placeholder="Min 6 chars" required minLength={6} />
                   </div>
                 </div>
                 <div>
@@ -175,7 +175,7 @@ const Login = () => {
                   </div>
                 </div>
               </div>
-              <p className="text-gray-500 text-xs">Password must be 8+ chars with uppercase, lowercase & number.</p>
+              <p className="text-gray-500 text-xs">Password must be 6+ characters.</p>
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-indigo-400 hover:text-indigo-300 text-xs flex items-center gap-1">
                 {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
                 {showPassword ? 'Hide' : 'Show'} passwords

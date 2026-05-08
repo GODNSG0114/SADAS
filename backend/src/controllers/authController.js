@@ -8,8 +8,7 @@ const { validate } = require('../middleware/errorHandler');
 const registerValidation = [
   body('name').trim().notEmpty().withMessage('Name is required').isLength({ min: 2, max: 255 }),
   body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain uppercase, lowercase, and number'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('department').optional().trim().notEmpty(),
   body('year').optional().isInt({ min: 1, max: 4 }).withMessage('Year must be between 1 and 4'),
 ];
@@ -173,8 +172,7 @@ const getMe = async (req, res) => {
 const adminRegister = [
   body('name').trim().notEmpty().withMessage('Name is required'),
   body('email').trim().isEmail().withMessage('Valid email is required').normalizeEmail(),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain uppercase, lowercase, and number'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   validate,
   async (req, res) => {
     const { secretKey } = req.params;
