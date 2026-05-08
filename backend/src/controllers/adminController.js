@@ -797,6 +797,52 @@ const generatePDFReport = async (req, res) => {
   }
 };
 
+// @route   POST /api/admin/make-admin
+// @access  super_admin only
+const makeAdmin = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId || !Number.isInteger(Number(userId)) || Number(userId) <= 0) {
+      return res.status(400).json({ success: false, message: 'userId is required and must be a positive integer.' });
+    }
+    if (parseInt(userId) === req.user.id) {
+      return res.status(400).json({ success: false, message: 'Cannot change your own role.' });
+    }
+    const result = await pool.query(
+      `UPDATE users SET role = 'admin', updated_at = NOW() WHERE id = $1 RETURNING id, name, email, role, is_active`,
+      [parseInt(userId)]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found.' });
+    res.json({ success: true, message: 'User promoted to admin.', data: result.rows[0] });
+  } catch (error) {
+    console.error('Make admin error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update role.' });
+  }
+};
+
+// @route   POST /api/admin/demote-admin
+// @access  super_admin only
+const demoteAdmin = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId || !Number.isInteger(Number(userId)) || Number(userId) <= 0) {
+      return res.status(400).json({ success: false, message: 'userId is required and must be a positive integer.' });
+    }
+    if (parseInt(userId) === req.user.id) {
+      return res.status(400).json({ success: false, message: 'Cannot change your own role.' });
+    }
+    const result = await pool.query(
+      `UPDATE users SET role = 'student', updated_at = NOW() WHERE id = $1 RETURNING id, name, email, role, is_active`,
+      [parseInt(userId)]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found.' });
+    res.json({ success: true, message: 'User demoted to student.', data: result.rows[0] });
+  } catch (error) {
+    console.error('Demote admin error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update role.' });
+  }
+};
+
 module.exports = {
   getUsers, updateUser, deleteUser,
   getAnalytics, getAllStudents,
