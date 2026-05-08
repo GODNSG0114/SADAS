@@ -15,6 +15,9 @@ const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
+// Trust Vercel/proxy headers for rate limiting and IP detection
+app.set('trust proxy', 1);
+
 // ============================================================
 // SECURITY MIDDLEWARE
 // ============================================================
