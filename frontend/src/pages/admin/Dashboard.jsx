@@ -31,16 +31,58 @@ const AdminDashboard = () => {
   }, []);
 
   const handleDownload = async (type) => {
+    const token = localStorage.getItem('sadas_token') ||
+      (() => { try { return JSON.parse(localStorage.getItem('sadas_user'))?.token; } catch { return null; } })();
+    if (!token) { toast.error('Not authenticated. Please log in again.'); return; }
+
+    const toastId = toast.loading(`Generating ${type.toUpperCase()} report...`);
     try {
-      toast.success(`Generated Request for ${type} Report..`, { icon: '⏳' });
-      // Direct window location binding for download since axios converts blobs if we don't setup arrayBuffers
-      const userObj = JSON.parse(localStorage.getItem('sadas_user'));
-      window.location.href = `http://localhost:5000/api/admin/reports/${type}?token=${userObj.token}`;
-      setTimeout(() => toast.success('Download Initiated!'), 1500);
-    } catch(err) {
-      toast.error("Download failed.");
+      const response = await api.get(`/admin/reports/${type}`, {
+        responseType: 'blob',
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 60000 // reports can take time
+      });
+
+      // Check if backend returned an error as JSON blob
+      if (response.data.type === 'application/json') {
+        const text = await response.data.text();
+        const err = JSON.parse(text);
+        toast.error(err.message || 'Report generation failed.', { id: toastId });
+        return;
+      }
+
+      const ext = type === 'excel' ? 'xlsx' : 'pdf';
+      const mimeType = type === 'excel'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/pdf';
+
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `NAAC_Criterion5_Report.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success('Download started!', { id: toastId });
+    } catch (err) {
+      console.error('Download error:', err);
+      // Try to read error message from blob response
+      if (err.response?.data instanceof Blob) {
+        const text = await err.response.data.text();
+        try {
+          const parsed = JSON.parse(text);
+          toast.error(parsed.message || 'Report generation failed.', { id: toastId });
+        } catch {
+          toast.error('Report generation failed.', { id: toastId });
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'Report generation failed.', { id: toastId });
+      }
     }
-  }
+  };
 
   if (loading || !data) {
     return <div className="h-screen flex items-center justify-center text-purple-600"><Loader2 className="animate-spin w-12 h-12" /></div>;

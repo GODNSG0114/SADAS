@@ -537,112 +537,81 @@ const NAAC_SECTIONS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NAAC EXCEL REPORT  (one sheet per criterion section)
-// ─────────────────────────────────────────────────────────────────────────────
 // @route   GET /api/admin/reports/excel
 const generateExcelReport = async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'SADAS';
-    workbook.created = new Date();
+    const ws = workbook.addWorksheet('SADAS Report');
+    let currentRow = 1;
 
-    // ── Cover / Summary sheet ────────────────────────────────────────────────
-    const coverSheet = workbook.addWorksheet('NAAC Summary');
-    coverSheet.columns = [{ width: 40 }, { width: 20 }];
-
-    const addCoverRow = (label, value, bold = false) => {
-      const row = coverSheet.addRow([label, value]);
-      if (bold) { row.font = { bold: true, size: 12 }; }
-      return row;
-    };
-
-    coverSheet.addRow([]);
-    addCoverRow('NAAC Self Study Report — Student Activity Data', '', true);
-    addCoverRow('Institution', INSTITUTION_NAME);
-    addCoverRow('Academic Year', NAAC_ACADEMIC_YEAR);
-    addCoverRow('Criterion', 'Criterion V — Student Support and Progression');
-    addCoverRow('Generated On', new Date().toLocaleString('en-IN'));
-    coverSheet.addRow([]);
-    addCoverRow('Section', 'Total Approved Records', true);
-
-    const summaryStartRow = coverSheet.rowCount + 1;
-
-    // ── One sheet per activity section ──────────────────────────────────────
-    for (const section of NAAC_SECTIONS) {
-      const rows = await pool.query(section.query);
-      const count = rows.rows.length;
-
-      // Add to summary
-      coverSheet.addRow([`${section.criterion} — ${section.title}`, count]);
-
-      // Create worksheet
-      const sheetName = section.title.substring(0, 31); // Excel limit
-      const ws = workbook.addWorksheet(sheetName);
-
-      // ── Sheet header block ───────────────────────────────────────────────
-      const headerRows = [
-        [`${INSTITUTION_NAME}`],
-        [`NAAC Criterion ${section.criterion} — ${section.title}`],
-        [`Academic Year: ${NAAC_ACADEMIC_YEAR}`],
-        [`Total Records: ${count}`],
-        [],
-      ];
-      headerRows.forEach((r, i) => {
-        const row = ws.addRow(r);
-        if (i === 0) row.font = { bold: true, size: 13 };
-        else if (i === 1) row.font = { bold: true, size: 11 };
-        else row.font = { size: 10 };
+    const addSection = async (title, query, columns) => {
+      const rows = await pool.query(query);
+      ws.getCell(`A${currentRow}`).value = title;
+      ws.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
+      ws.getRow(currentRow).height = 20;
+      currentRow++;
+      columns.forEach((col, i) => {
+        const cell = ws.getCell(currentRow, i + 1);
+        cell.value = col.header;
+        cell.font = { bold: true };
+        cell.border = { bottom: { style: 'thin' } };
+        ws.getColumn(i + 1).width = Math.max(col.header.length + 4, 18);
       });
-
-      // ── Column headers ───────────────────────────────────────────────────
-      const headerRow = ws.addRow(section.columns);
-      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
-      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      headerRow.height = 22;
-
-      // Set column widths
-      section.columns.forEach((col, i) => {
-        ws.getColumn(i + 1).width = Math.max(col.length + 4, 18);
-      });
-      // Sr.No narrow
-      ws.getColumn(1).width = 7;
-
-      // ── Data rows ────────────────────────────────────────────────────────
-      if (count === 0) {
-        const emptyRow = ws.addRow(['No approved records found for this section.']);
-        emptyRow.font = { italic: true, color: { argb: 'FF888888' } };
+      currentRow++;
+      if (rows.rows.length === 0) {
+        ws.getCell(`A${currentRow}`).value = 'No approved records.';
+        ws.getCell(`A${currentRow}`).font = { italic: true };
+        currentRow++;
       } else {
-        rows.rows.forEach((r, idx) => {
-          const values = section.columns.map(col => r[col] ?? '');
-          const dataRow = ws.addRow(values);
-          dataRow.fill = {
-            type: 'pattern', pattern: 'solid',
-            fgColor: { argb: idx % 2 === 0 ? 'FFEEF2FF' : 'FFFFFFFF' }
-          };
-          dataRow.alignment = { vertical: 'middle', wrapText: true };
-          dataRow.height = 18;
+        rows.rows.forEach(r => {
+          columns.forEach((col, i) => {
+            ws.getCell(currentRow, i + 1).value = r[col.key] ?? '';
+          });
+          currentRow++;
         });
       }
+      currentRow += 2;
+    };
 
-      // Border on header row
-      headerRow.eachCell(cell => {
-        cell.border = {
-          top: { style: 'thin' }, bottom: { style: 'medium' },
-          left: { style: 'thin' }, right: { style: 'thin' }
-        };
-      });
-
-      // Freeze top rows + header
-      ws.views = [{ state: 'frozen', ySplit: ws.rowCount - count - (count === 0 ? 1 : 0) }];
-    }
-
-    // Style summary sheet
-    coverSheet.getColumn(1).width = 50;
-    coverSheet.getColumn(2).width = 25;
+    await addSection('Field Projects',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, fp.year, fp.project_name, fp.program_code, fp.activity, fp.document_url FROM field_projects fp JOIN students s ON fp.student_id = s.id JOIN users u ON s.user_id = u.id WHERE fp.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Project Name', key: 'project_name' }, { header: 'Program Code', key: 'program_code' }, { header: 'Activity', key: 'activity' }, { header: 'Document URL', key: 'document_url' }]
+    );
+    await addSection('Internships',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, i.year, i.duration, i.agency_name, i.document_url FROM internships i JOIN students s ON i.student_id = s.id JOIN users u ON s.user_id = u.id WHERE i.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Duration', key: 'duration' }, { header: 'Agency Name', key: 'agency_name' }, { header: 'Document URL', key: 'document_url' }]
+    );
+    await addSection('Club Activities',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, ca.year, ca.club_name, ca.activity_name, ca.duration, ca.document_url FROM club_activities ca JOIN students s ON ca.student_id = s.id JOIN users u ON s.user_id = u.id WHERE ca.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Club Name', key: 'club_name' }, { header: 'Activity Name', key: 'activity_name' }, { header: 'Duration', key: 'duration' }, { header: 'Document URL', key: 'document_url' }]
+    );
+    await addSection('Sports Activities',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, sa.year, sa.sport_name, sa.venue, sa.achievement, sa.document_url FROM sports_activities sa JOIN students s ON sa.student_id = s.id JOIN users u ON s.user_id = u.id WHERE sa.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Sport Name', key: 'sport_name' }, { header: 'Venue', key: 'venue' }, { header: 'Achievement', key: 'achievement' }, { header: 'Document URL', key: 'document_url' }]
+    );
+    await addSection('Hackathons',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, h.year, h.organization_name, h.project_name, h.achievement, h.document_url FROM hackathons h JOIN students s ON h.student_id = s.id JOIN users u ON s.user_id = u.id WHERE h.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Organization', key: 'organization_name' }, { header: 'Project Name', key: 'project_name' }, { header: 'Achievement', key: 'achievement' }, { header: 'Document URL', key: 'document_url' }]
+    );
+    await addSection('Examinations',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, e.year, e.exam_name, e.registration_number, e.score, e.admit_card_url, e.result_document_url FROM examinations e JOIN students s ON e.student_id = s.id JOIN users u ON s.user_id = u.id WHERE e.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Exam Name', key: 'exam_name' }, { header: 'Registration No', key: 'registration_number' }, { header: 'Score', key: 'score' }, { header: 'Admit Card URL', key: 'admit_card_url' }, { header: 'Result Document URL', key: 'result_document_url' }]
+    );
+    await addSection('Higher Education',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, he.year_of_passing, he.program_graduated, he.institution_joined, he.program_admitted FROM higher_education he JOIN students s ON he.student_id = s.id JOIN users u ON s.user_id = u.id WHERE he.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year of Passing', key: 'year_of_passing' }, { header: 'Program Graduated', key: 'program_graduated' }, { header: 'Institution Joined', key: 'institution_joined' }, { header: 'Program Admitted', key: 'program_admitted' }]
+    );
+    await addSection('Extra-Curriculars',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, ec.year, ec.activity_name, ec.description, ec.document_url FROM extra_curriculars ec JOIN students s ON ec.student_id = s.id JOIN users u ON s.user_id = u.id WHERE ec.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Year', key: 'year' }, { header: 'Activity Name', key: 'activity_name' }, { header: 'Description', key: 'description' }, { header: 'Document URL', key: 'document_url' }]
+    );
+    await addSection('Certifications',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, c.title, c.provider, c.completion_date::text as completion_date, c.credential_id, c.certificate_url FROM certifications c JOIN students s ON c.student_id = s.id JOIN users u ON s.user_id = u.id WHERE c.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      [{ header: 'Student Name', key: 'name' }, { header: 'PRN', key: 'roll_number' }, { header: 'Department', key: 'department' }, { header: 'Study Year', key: 'study_year' }, { header: 'Title', key: 'title' }, { header: 'Provider', key: 'provider' }, { header: 'Completion Date', key: 'completion_date' }, { header: 'Credential ID', key: 'credential_id' }, { header: 'Certificate URL', key: 'certificate_url' }]
+    );
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=NAAC_Criterion5_Report_${NAAC_ACADEMIC_YEAR.replace('/', '-')}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=SADAS_Report_${Date.now()}.xlsx`);
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
@@ -657,139 +626,116 @@ const generateExcelReport = async (req, res) => {
 // @route   GET /api/admin/reports/pdf
 const generatePDFReport = async (req, res) => {
   try {
-    const doc = new PDFDocument({ margin: 40, size: 'A4', autoFirstPage: true, layout: 'landscape' });
+    const doc = new PDFDocument({ margin: 50, size: 'A4', autoFirstPage: true });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=NAAC_Criterion5_Report_${NAAC_ACADEMIC_YEAR.replace('/', '-')}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename=SADAS_Report_${Date.now()}.pdf`);
     doc.pipe(res);
 
-    const PAGE_W = doc.page.width;
-    const PAGE_H = doc.page.height;
-    const MARGIN = 40;
-    const CONTENT_W = PAGE_W - MARGIN * 2;
-    const PAGE_BOTTOM = PAGE_H - 50;
-    const ROW_H = 15;
-    const HEADER_H = 20;
+    const LEFT = 50;
+    const RIGHT = 545;
+    const PAGE_BOTTOM = doc.page.height - 60;
+    const ROW_HEIGHT = 16;
+    const HEADER_HEIGHT = 18;
 
-    // ── Draw a horizontal rule ───────────────────────────────────────────────
-    const hRule = (y, weight = 0.5) => {
-      doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(weight).stroke('#1F3864');
-    };
-
-    // ── Draw one table row ───────────────────────────────────────────────────
-    const drawRow = (cells, colWidths, y, opts = {}) => {
-      let x = MARGIN;
-      cells.forEach((val, i) => {
-        if (opts.bg) {
-          doc.rect(x, y, colWidths[i], opts.rowH || ROW_H).fill(opts.bg).stroke();
-        }
-        doc
-          .fillColor(opts.color || '#1a1a1a')
-          .fontSize(opts.fontSize || 7)
-          .font(opts.bold ? 'Helvetica-Bold' : 'Helvetica')
-          .text(String(val ?? ''), x + 2, y + 3, {
-            width: colWidths[i] - 4,
-            height: (opts.rowH || ROW_H) - 4,
-            ellipsis: true,
-            lineBreak: false
-          });
+    const drawRow = (cols, colWidths, y, bold = false) => {
+      let x = LEFT;
+      cols.forEach((val, i) => {
+        doc.fontSize(7.5).font(bold ? 'Helvetica-Bold' : 'Helvetica')
+          .text(String(val ?? ''), x + 2, y + 3, { width: colWidths[i] - 4, ellipsis: true, lineBreak: false });
         x += colWidths[i];
       });
     };
 
-    // ── Cover page ───────────────────────────────────────────────────────────
-    doc.rect(0, 0, PAGE_W, PAGE_H).fill('#1F3864');
-    doc.fillColor('#FFFFFF')
-      .fontSize(22).font('Helvetica-Bold')
-      .text('NAAC Self Study Report', MARGIN, 120, { align: 'center', width: CONTENT_W });
-    doc.fontSize(16).font('Helvetica')
-      .text('Criterion V — Student Support and Progression', MARGIN, doc.y + 10, { align: 'center', width: CONTENT_W });
-    doc.fontSize(13)
-      .text(INSTITUTION_NAME, MARGIN, doc.y + 30, { align: 'center', width: CONTENT_W });
-    doc.fontSize(11)
-      .text(`Academic Year: ${NAAC_ACADEMIC_YEAR}`, MARGIN, doc.y + 10, { align: 'center', width: CONTENT_W });
-    doc.fontSize(9)
-      .text(`Generated: ${new Date().toLocaleString('en-IN')}`, MARGIN, doc.y + 10, { align: 'center', width: CONTENT_W });
-    doc.fontSize(8).fillColor('#AAAAAA')
-      .text('Generated by SADAS — Student Activity Data Analysis System', MARGIN, PAGE_H - 60, { align: 'center', width: CONTENT_W });
-
-    // ── One section per activity type ────────────────────────────────────────
-    for (const section of NAAC_SECTIONS) {
-      const rows = await pool.query(section.query);
-      doc.addPage();
-
-      // Section header
-      doc.rect(MARGIN, 30, CONTENT_W, 28).fill('#1F3864');
-      doc.fillColor('#FFFFFF').fontSize(11).font('Helvetica-Bold')
-        .text(`Criterion ${section.criterion} — ${section.title}`, MARGIN + 8, 38, { width: CONTENT_W - 16 });
-      doc.fillColor('#CCDDFF').fontSize(8).font('Helvetica')
-        .text(`${INSTITUTION_NAME}  |  Academic Year: ${NAAC_ACADEMIC_YEAR}  |  Total Records: ${rows.rows.length}`,
-          MARGIN + 8, 52, { width: CONTENT_W - 16 });
-
-      if (rows.rows.length === 0) {
-        doc.fillColor('#888888').fontSize(9).font('Helvetica')
-          .text('No approved records found for this section.', MARGIN, 80);
-        continue;
+    const drawSection = async (title, query, headers, keys) => {
+      const result = await pool.query(query);
+      if (doc.y + 40 > PAGE_BOTTOM) doc.addPage();
+      doc.fontSize(11).font('Helvetica-Bold').text(title, LEFT, doc.y);
+      doc.moveDown(0.2);
+      doc.moveTo(LEFT, doc.y).lineTo(RIGHT, doc.y).lineWidth(0.5).stroke();
+      doc.moveDown(0.3);
+      if (result.rows.length === 0) {
+        doc.fontSize(8).font('Helvetica').text('No approved records.', LEFT, doc.y);
+        doc.moveDown(1.5);
+        return;
       }
-
-      // Calculate column widths proportionally
-      // Sr.No gets fixed 30px, Document Reference gets 80px, rest share equally
-      const fixedCols = { 'Sr.No': 28, 'Document Reference': 75, 'PRN / Roll No': 55 };
-      let remaining = CONTENT_W;
-      let flexCount = 0;
-      section.columns.forEach(col => {
-        if (fixedCols[col]) remaining -= fixedCols[col];
-        else flexCount++;
-      });
-      const flexW = flexCount > 0 ? Math.floor(remaining / flexCount) : 0;
-      const colWidths = section.columns.map(col => fixedCols[col] || flexW);
-
-      let y = 68;
-
-      // Column header row
-      drawRow(section.columns, colWidths, y, { bg: '#2E4A8A', color: '#FFFFFF', bold: true, fontSize: 7.5, rowH: HEADER_H });
-      y += HEADER_H;
-      hRule(y, 0.3);
-      y += 1;
-
-      // Data rows
-      rows.rows.forEach((row, idx) => {
-        if (y + ROW_H > PAGE_BOTTOM) {
+      const pageWidth = RIGHT - LEFT;
+      const colWidths = headers.map(() => pageWidth / headers.length);
+      let y = doc.y;
+      drawRow(headers, colWidths, y, true);
+      y += HEADER_HEIGHT;
+      doc.moveTo(LEFT, y).lineTo(RIGHT, y).lineWidth(0.3).stroke();
+      y += 2;
+      result.rows.forEach(row => {
+        if (y + ROW_HEIGHT > PAGE_BOTTOM) {
           doc.addPage();
-          y = 30;
-          // Repeat header
-          doc.rect(MARGIN, y - 2, CONTENT_W, 16).fill('#1F3864');
-          doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold')
-            .text(`${section.criterion} — ${section.title} (continued)`, MARGIN + 4, y, { width: CONTENT_W - 8 });
-          y += 18;
-          drawRow(section.columns, colWidths, y, { bg: '#2E4A8A', color: '#FFFFFF', bold: true, fontSize: 7.5, rowH: HEADER_H });
-          y += HEADER_H;
-          hRule(y, 0.3);
-          y += 1;
+          y = 50;
+          drawRow(headers, colWidths, y, true);
+          y += HEADER_HEIGHT;
+          doc.moveTo(LEFT, y).lineTo(RIGHT, y).lineWidth(0.3).stroke();
+          y += 2;
         }
-
-        const bg = idx % 2 === 0 ? '#EEF2FF' : '#FFFFFF';
-        const values = section.columns.map(col => row[col] ?? '');
-        drawRow(values, colWidths, y, { bg, fontSize: 7, rowH: ROW_H });
-        y += ROW_H;
+        drawRow(keys.map(k => row[k] ?? ''), colWidths, y, false);
+        y += ROW_HEIGHT;
       });
+      y += 4;
+      doc.fontSize(7.5).font('Helvetica').text(`Total: ${result.rows.length} record(s)`, LEFT, y);
+      doc.y = y + 20;
+    };
 
-      // Total line
-      hRule(y + 2, 0.5);
-      doc.fillColor('#1F3864').fontSize(8).font('Helvetica-Bold')
-        .text(`Total Approved Records: ${rows.rows.length}`, MARGIN, y + 6);
-    }
+    doc.fontSize(15).font('Helvetica-Bold').text('Student Activity Data Analysis System', LEFT, 50, { align: 'center', width: RIGHT - LEFT });
+    doc.fontSize(10).font('Helvetica').text('Approved Records Report', LEFT, doc.y, { align: 'center', width: RIGHT - LEFT });
+    doc.fontSize(8).font('Helvetica').text(`Generated: ${new Date().toLocaleString('en-IN')}`, LEFT, doc.y, { align: 'center', width: RIGHT - LEFT });
+    doc.moveDown(1.5);
+    doc.moveTo(LEFT, doc.y).lineTo(RIGHT, doc.y).lineWidth(1).stroke();
+    doc.moveDown(1);
 
-    // ── Footer on every page ─────────────────────────────────────────────────
-    const range = doc.bufferedPageRange();
-    for (let i = range.start; i < range.start + range.count; i++) {
-      doc.switchToPage(i);
-      doc.fillColor('#888888').fontSize(7).font('Helvetica')
-        .text(
-          `${INSTITUTION_NAME}  |  NAAC Criterion V  |  Page ${i + 1} of ${range.count}`,
-          MARGIN, PAGE_H - 25, { align: 'center', width: CONTENT_W }
-        );
-    }
+    await drawSection('Field Projects',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, fp.year, fp.project_name, fp.program_code, fp.activity FROM field_projects fp JOIN students s ON fp.student_id = s.id JOIN users u ON s.user_id = u.id WHERE fp.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Project Name', 'Program Code', 'Activity'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'project_name', 'program_code', 'activity']
+    );
+    await drawSection('Internships',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, i.year, i.duration, i.agency_name FROM internships i JOIN students s ON i.student_id = s.id JOIN users u ON s.user_id = u.id WHERE i.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Duration', 'Agency Name'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'duration', 'agency_name']
+    );
+    await drawSection('Club Activities',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, ca.year, ca.club_name, ca.activity_name, ca.duration FROM club_activities ca JOIN students s ON ca.student_id = s.id JOIN users u ON s.user_id = u.id WHERE ca.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Club Name', 'Activity', 'Duration'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'club_name', 'activity_name', 'duration']
+    );
+    await drawSection('Sports Activities',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, sa.year, sa.sport_name, sa.venue, sa.achievement FROM sports_activities sa JOIN students s ON sa.student_id = s.id JOIN users u ON s.user_id = u.id WHERE sa.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Sport', 'Venue', 'Achievement'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'sport_name', 'venue', 'achievement']
+    );
+    await drawSection('Hackathons',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, h.year, h.organization_name, h.project_name, h.achievement FROM hackathons h JOIN students s ON h.student_id = s.id JOIN users u ON s.user_id = u.id WHERE h.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Organization', 'Project', 'Achievement'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'organization_name', 'project_name', 'achievement']
+    );
+    await drawSection('Examinations',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, e.year, e.exam_name, e.registration_number, e.score FROM examinations e JOIN students s ON e.student_id = s.id JOIN users u ON s.user_id = u.id WHERE e.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Exam Name', 'Reg No', 'Score'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'exam_name', 'registration_number', 'score']
+    );
+    await drawSection('Higher Education',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, he.year_of_passing, he.program_graduated, he.institution_joined, he.program_admitted FROM higher_education he JOIN students s ON he.student_id = s.id JOIN users u ON s.user_id = u.id WHERE he.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year of Passing', 'Program Graduated', 'Institution Joined', 'Program Admitted'],
+      ['name', 'roll_number', 'department', 'study_year', 'year_of_passing', 'program_graduated', 'institution_joined', 'program_admitted']
+    );
+    await drawSection('Extra-Curriculars',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, ec.year, ec.activity_name, ec.description FROM extra_curriculars ec JOIN students s ON ec.student_id = s.id JOIN users u ON s.user_id = u.id WHERE ec.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Year', 'Activity Name', 'Description'],
+      ['name', 'roll_number', 'department', 'study_year', 'year', 'activity_name', 'description']
+    );
+    await drawSection('Certifications',
+      `SELECT u.name, s.roll_number, s.department, s.year as study_year, c.title, c.provider, c.completion_date::text as completion_date, c.credential_id FROM certifications c JOIN students s ON c.student_id = s.id JOIN users u ON s.user_id = u.id WHERE c.verification_status = 'Approved' ORDER BY s.department, u.name`,
+      ['Student Name', 'PRN', 'Department', 'Study Year', 'Title', 'Provider', 'Completion Date', 'Credential ID'],
+      ['name', 'roll_number', 'department', 'study_year', 'title', 'provider', 'completion_date', 'credential_id']
+    );
 
+    doc.fontSize(8).font('Helvetica').text('Generated by SADAS — Student Activity Data Analysis System', LEFT, doc.y, { align: 'center', width: RIGHT - LEFT });
     doc.end();
   } catch (error) {
     console.error('PDF report error:', error);
